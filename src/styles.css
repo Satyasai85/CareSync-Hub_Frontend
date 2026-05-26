@@ -40,6 +40,15 @@ button:hover,
   background: #115e59;
 }
 
+.secondary-button {
+  background: #eef2f7;
+  color: #405160;
+}
+
+.secondary-button:hover {
+  background: #dfe6ee;
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -209,6 +218,18 @@ main {
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.7fr);
 }
 
+.booking-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.stack {
+  align-content: start;
+  display: grid;
+  gap: 14px;
+}
+
 .doctor-list,
 .timeline {
   display: grid;
@@ -220,6 +241,13 @@ main {
   display: grid;
   gap: 12px;
   padding: 16px;
+}
+
+.doctor-card-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
 }
 
 .badge,
@@ -262,6 +290,10 @@ main {
 .form-grid {
   display: grid;
   gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid.one-line {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -367,12 +399,14 @@ th {
 
 @media (max-width: 880px) {
   .topbar,
-  .section-head {
+  .section-head,
+  .doctor-card-head {
     flex-direction: column;
   }
 
   .stats-grid,
   .grid-two,
+  .booking-layout,
   .filters,
   .form-grid {
     grid-template-columns: 1fr;

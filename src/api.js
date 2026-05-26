@@ -19,6 +19,25 @@ export async function api(path, { role = "admin", ...options } = {}) {
   return response.json();
 }
 
-export function reportUrl(path) {
-  return `${API_URL}${path}`;
+export async function downloadReport(path, { role = "admin", filename = "report.csv" } = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: {
+      "x-user-role": role
+    }
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: "Report download failed" }));
+    throw new Error(error.message || "Report download failed");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

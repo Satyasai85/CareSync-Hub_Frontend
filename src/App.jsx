@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   CalendarClock,
@@ -9,22 +9,62 @@ import {
   HeartPulse,
   History,
   LayoutDashboard,
+  Plus,
+  RefreshCcw,
+  Save,
   Search,
   Stethoscope,
+  UserPlus,
   UserRound
 } from "lucide-react";
-import { api, reportUrl } from "./api.js";
+import { api, downloadReport } from "./api.js";
+
+const emptyDoctor = {
+  name: "",
+  email: "",
+  phone: "",
+  specialization: "",
+  qualification: "",
+  room_number: ""
+};
+
+const emptyPatient = {
+  name: "",
+  email: "",
+  phone: "",
+  age: "",
+  gender: "",
+  address: ""
+};
+
+const emptyBooking = {
+  patient_id: "",
+  doctor_id: "",
+  appointment_date: "",
+  start_time: "",
+  end_time: "",
+  reason: ""
+};
+
+const emptyAvailability = {
+  doctor_id: "",
+  day_of_week: "Monday",
+  start_time: "",
+  end_time: ""
+};
 
 const tabs = [
-  { id: "analytics", label: "Analytics", icon: LayoutDashboard },
-  { id: "doctors", label: "Doctors", icon: Stethoscope },
-  { id: "booking", label: "Book", icon: CalendarClock },
-  { id: "patient", label: "Patient", icon: UserRound },
-  { id: "doctor", label: "Doctor", icon: HeartPulse },
-  { id: "history", label: "History", icon: History }
+  { id: "analytics", label: "Analytics", icon: LayoutDashboard, roles: ["admin", "receptionist", "doctor"] },
+  { id: "doctors", label: "Doctors", icon: Stethoscope, roles: ["admin", "receptionist", "patient", "doctor"] },
+  { id: "booking", label: "Book", icon: CalendarClock, roles: ["admin", "receptionist", "patient"] },
+  { id: "patient", label: "Patient", icon: UserRound, roles: ["admin", "receptionist", "patient"] },
+  { id: "doctor", label: "Doctor", icon: HeartPulse, roles: ["admin", "doctor", "receptionist"] },
+  { id: "history", label: "History", icon: History, roles: ["admin", "doctor", "receptionist", "patient"] }
 ];
 
 const statusOptions = ["Pending", "Confirmed", "In Progress", "Completed", "Cancelled", "Rescheduled"];
+const consultationStatus = ["Pending", "In Progress", "Completed"];
+const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function useLoad(loader, deps) {
   const [state, setState] = useState({ loading: true, error: "", data: null });
@@ -41,6 +81,17 @@ function useLoad(loader, deps) {
   }, deps);
 
   return state;
+}
+
+function requiredValues(values, labels) {
+  const missing = Object.entries(labels).find(([key]) => !String(values[key] || "").trim());
+  if (missing) throw new Error(`${missing[1]} is required.`);
+}
+
+function nextStatusOptions(role, mode) {
+  if (role === "doctor" || mode === "doctor") return consultationStatus;
+  if (role === "receptionist") return ["Confirmed", "Rescheduled", "Cancelled"];
+  return statusOptions;
 }
 
 function StatCard({ label, value, icon: Icon }) {
@@ -60,6 +111,10 @@ function Empty({ message }) {
 function Notice({ type = "info", children }) {
   if (!children) return null;
   return <div className={`notice ${type}`}>{children}</div>;
+}
+
+function TextField({ value, onChange, ...props }) {
+  return <input value={value} onChange={(event) => onChange(event.target.value)} {...props} />;
 }
 
 function Toolbar({ role, setRole }) {
@@ -84,26 +139,39 @@ function Toolbar({ role, setRole }) {
 
 function Analytics({ role }) {
   const { data, loading, error } = useLoad(() => api("/api/dashboard/summary", { role }), [role]);
+  const [message, setMessage] = useState("");
+
+  async function report(path, filename) {
+    setMessage("");
+    try {
+      await downloadReport(path, { role, filename });
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
 
   if (loading) return <Empty message="Loading hospital analytics..." />;
   if (error) return <Notice type="error">{error}</Notice>;
+
+  const workload = data.doctorWorkload || data.workload || [];
 
   return (
     <section className="panel">
       <div className="section-head">
         <div>
           <h2>Hospital Analytics</h2>
-          <p>Appointment volume, active patients, consultations, and workload.</p>
+          <p>Appointment volume, active patients, consultations, and doctor workload.</p>
         </div>
         <div className="actions">
-          <a className="icon-button" href={reportUrl("/api/reports/appointments")} title="Download appointments report">
+          <button type="button" className="icon-button" onClick={() => report("/api/reports/appointments", "appointments-report.csv")} title="Download appointments report">
             <Download size={17} /> Appointments
-          </a>
-          <a className="icon-button" href={reportUrl("/api/reports/consultations")} title="Download consultations report">
+          </button>
+          <button type="button" className="icon-button" onClick={() => report("/api/reports/consultations", "consultations-report.csv")} title="Download consultations report">
             <Download size={17} /> Consultations
-          </a>
+          </button>
         </div>
       </div>
+      <Notice type="error">{message}</Notice>
       <div className="stats-grid">
         <StatCard label="Total Appointments" value={data.totalAppointments} icon={CalendarClock} />
         <StatCard label="Active Patients" value={data.activePatients} icon={UserRound} />
@@ -111,48 +179,76 @@ function Analytics({ role }) {
         <StatCard label="Open Visits" value={data.pendingAppointments} icon={Activity} />
       </div>
       <h3>Doctor Workload</h3>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Doctor</th>
-              <th>Specialization</th>
-              <th>Appointments</th>
-              <th>Completed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.doctorWorkload.map((row) => (
-              <tr key={row.doctor_id}>
-                <td>{row.doctor_name}</td>
-                <td>{row.specialization}</td>
-                <td>{row.appointment_count}</td>
-                <td>{row.completed_count}</td>
+      {!workload.length && <Empty message="No doctor workload data is available yet." />}
+      {!!workload.length && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Doctor</th>
+                <th>Specialization</th>
+                <th>Appointments</th>
+                <th>Completed</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {workload.map((row) => (
+                <tr key={row.doctor_id || row.id || row.doctor_name}>
+                  <td>{row.doctor_name || row.name}</td>
+                  <td>{row.specialization || "Not specified"}</td>
+                  <td>{row.appointment_count ?? row.appointments ?? 0}</td>
+                  <td>{row.completed_count ?? row.completed ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
 
 function Doctors({ role }) {
-  const { data, loading, error } = useLoad(() => api("/api/doctors", { role }), [role]);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", specialization: "", qualification: "", room_number: "" });
+  const [refresh, setRefresh] = useState(0);
+  const { data, loading, error } = useLoad(() => api("/api/doctors", { role }), [role, refresh]);
+  const [doctorForm, setDoctorForm] = useState(emptyDoctor);
+  const [slotForm, setSlotForm] = useState(emptyAvailability);
   const [message, setMessage] = useState("");
 
-  async function submit(event) {
+  async function createDoctor(event) {
     event.preventDefault();
     setMessage("");
     try {
-      await api("/api/doctors", { role, method: "POST", body: JSON.stringify(form) });
-      setMessage("Doctor profile created. Refresh the page to see the latest list.");
-      setForm({ name: "", email: "", phone: "", specialization: "", qualification: "", room_number: "" });
+      requiredValues(doctorForm, { name: "Doctor name", email: "Email", specialization: "Specialization" });
+      await api("/api/doctors", { role, method: "POST", body: JSON.stringify(doctorForm) });
+      setMessage("Doctor profile created.");
+      setDoctorForm(emptyDoctor);
+      setRefresh((value) => value + 1);
     } catch (error) {
       setMessage(error.message);
     }
   }
+
+  async function createAvailability(event) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      requiredValues(slotForm, { doctor_id: "Doctor", day_of_week: "Day", start_time: "Start time", end_time: "End time" });
+      await api(`/api/doctors/${slotForm.doctor_id}/availability`, {
+        role,
+        method: "POST",
+        body: JSON.stringify(slotForm)
+      });
+      setMessage("Availability slot saved.");
+      setSlotForm(emptyAvailability);
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  const doctors = data || [];
+  const canManage = ["admin", "doctor"].includes(role);
 
   return (
     <section className="grid-two">
@@ -162,108 +258,193 @@ function Doctors({ role }) {
             <h2>Doctor Listing</h2>
             <p>Specializations, rooms, ratings, and consultation availability.</p>
           </div>
+          <button type="button" className="secondary-button" onClick={() => setRefresh((value) => value + 1)} title="Refresh doctors">
+            <RefreshCcw size={16} /> Refresh
+          </button>
         </div>
         {loading && <Empty message="Loading doctors..." />}
         {error && <Notice type="error">{error}</Notice>}
+        {!loading && !doctors.length && <Empty message="No doctors found. Add doctor profiles to start scheduling." />}
         <div className="doctor-list">
-          {(data || []).map((doctor) => (
+          {doctors.map((doctor) => (
             <article className="doctor-card" key={doctor.id}>
-              <div>
-                <h3>{doctor.name}</h3>
-                <p>{doctor.specialization} · {doctor.qualification || "Qualification pending"}</p>
+              <div className="doctor-card-head">
+                <div>
+                  <h3>{doctor.name}</h3>
+                  <p>{doctor.specialization} &middot; {doctor.qualification || "Qualification pending"}</p>
+                </div>
+                <span className="badge">Room {doctor.room_number || "TBD"}</span>
               </div>
-              <span className="badge">Room {doctor.room_number || "TBD"}</span>
               <div className="availability">
-                {doctor.availability.length ? doctor.availability.map((slot) => (
-                  <span key={slot.id}>{slot.day_of_week} {slot.start_time}-{slot.end_time}</span>
+                {(doctor.availability || []).length ? doctor.availability.map((slot) => (
+                  <span key={slot.id || `${slot.day_of_week}-${slot.start_time}`}>
+                    {slot.day_of_week} {slot.start_time}-{slot.end_time}
+                  </span>
                 )) : <span>No availability configured</span>}
               </div>
             </article>
           ))}
         </div>
       </div>
-      <form className="panel form-panel" onSubmit={submit}>
-        <h2>Create Doctor</h2>
+
+      <div className="stack">
         <Notice>{message}</Notice>
-        <input required placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input required type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        <input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-        <input required placeholder="Specialization" value={form.specialization} onChange={(e) => setForm({ ...form, specialization: e.target.value })} />
-        <input placeholder="Qualification" value={form.qualification} onChange={(e) => setForm({ ...form, qualification: e.target.value })} />
-        <input placeholder="Room number" value={form.room_number} onChange={(e) => setForm({ ...form, room_number: e.target.value })} />
-        <button type="submit">Create Profile</button>
-      </form>
+        {canManage && (
+          <form className="panel form-panel" onSubmit={createDoctor}>
+            <h2>Create Doctor</h2>
+            <TextField required placeholder="Full name" value={doctorForm.name} onChange={(name) => setDoctorForm({ ...doctorForm, name })} />
+            <TextField required type="email" placeholder="Email" value={doctorForm.email} onChange={(email) => setDoctorForm({ ...doctorForm, email })} />
+            <TextField placeholder="Phone" value={doctorForm.phone} onChange={(phone) => setDoctorForm({ ...doctorForm, phone })} />
+            <TextField required placeholder="Specialization" value={doctorForm.specialization} onChange={(specialization) => setDoctorForm({ ...doctorForm, specialization })} />
+            <TextField placeholder="Qualification" value={doctorForm.qualification} onChange={(qualification) => setDoctorForm({ ...doctorForm, qualification })} />
+            <TextField placeholder="Room number" value={doctorForm.room_number} onChange={(room_number) => setDoctorForm({ ...doctorForm, room_number })} />
+            <button type="submit"><Plus size={17} /> Create Profile</button>
+          </form>
+        )}
+        {canManage && (
+          <form className="panel form-panel" onSubmit={createAvailability}>
+            <h2>Set Availability</h2>
+            <select required value={slotForm.doctor_id} onChange={(event) => setSlotForm({ ...slotForm, doctor_id: event.target.value })}>
+              <option value="">Select doctor</option>
+              {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
+            </select>
+            <select required value={slotForm.day_of_week} onChange={(event) => setSlotForm({ ...slotForm, day_of_week: event.target.value })}>
+              {days.map((day) => <option key={day} value={day}>{day}</option>)}
+            </select>
+            <div className="form-grid one-line">
+              <input required type="time" value={slotForm.start_time} onChange={(event) => setSlotForm({ ...slotForm, start_time: event.target.value })} />
+              <input required type="time" value={slotForm.end_time} onChange={(event) => setSlotForm({ ...slotForm, end_time: event.target.value })} />
+            </div>
+            <button type="submit"><Save size={17} /> Save Slot</button>
+          </form>
+        )}
+        {!canManage && <Empty message="Doctor profiles and availability are managed by admins and doctors." />}
+      </div>
     </section>
   );
 }
 
 function Booking({ role }) {
-  const doctors = useLoad(() => api("/api/doctors", { role }), [role]);
-  const patients = useLoad(() => api("/api/users?role=patient", { role: role === "patient" ? "admin" : role }), [role]);
-  const [form, setForm] = useState({
-    patient_id: "",
-    doctor_id: "",
-    appointment_date: "",
-    start_time: "",
-    end_time: "",
-    reason: ""
-  });
+  const [refresh, setRefresh] = useState(0);
+  const doctors = useLoad(() => api("/api/doctors", { role }), [role, refresh]);
+  const patients = useLoad(() => api("/api/users?role=patient", { role: role === "patient" ? "admin" : role }), [role, refresh]);
+  const [patientForm, setPatientForm] = useState(emptyPatient);
+  const [bookingForm, setBookingForm] = useState(emptyBooking);
   const [message, setMessage] = useState("");
 
-  async function submit(event) {
+  async function registerPatient(event) {
     event.preventDefault();
     setMessage("");
     try {
-      await api("/api/appointments", { role, method: "POST", body: JSON.stringify(form) });
-      setMessage("Appointment request submitted and visible in dashboards.");
-      setForm({ patient_id: "", doctor_id: "", appointment_date: "", start_time: "", end_time: "", reason: "" });
+      requiredValues(patientForm, { name: "Patient name", email: "Email", phone: "Phone" });
+      await api("/api/users", {
+        role: role === "patient" ? "admin" : role,
+        method: "POST",
+        body: JSON.stringify({ ...patientForm, role: "patient" })
+      });
+      setMessage("Patient registered and available for booking.");
+      setPatientForm(emptyPatient);
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  async function bookAppointment(event) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      requiredValues(bookingForm, {
+        patient_id: "Patient",
+        doctor_id: "Doctor",
+        appointment_date: "Date",
+        start_time: "Start time",
+        end_time: "End time",
+        reason: "Reason"
+      });
+      await api("/api/appointments", { role, method: "POST", body: JSON.stringify(bookingForm) });
+      setMessage("Appointment request submitted. Confirmation status is visible in dashboards.");
+      setBookingForm(emptyBooking);
     } catch (error) {
       setMessage(error.message);
     }
   }
 
   return (
-    <form className="panel form-panel wide-form" onSubmit={submit}>
-      <h2>Appointment Booking</h2>
-      <p>Duplicate active bookings for the same doctor, date, and time are rejected by the API.</p>
-      <Notice>{message}</Notice>
-      <div className="form-grid">
-        <select required value={form.patient_id} onChange={(e) => setForm({ ...form, patient_id: e.target.value })}>
-          <option value="">Select patient</option>
-          {(patients.data || []).map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
-        </select>
-        <select required value={form.doctor_id} onChange={(e) => setForm({ ...form, doctor_id: e.target.value })}>
-          <option value="">Select doctor</option>
-          {(doctors.data || []).map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name} - {doctor.specialization}</option>)}
-        </select>
-        <input required type="date" value={form.appointment_date} onChange={(e) => setForm({ ...form, appointment_date: e.target.value })} />
-        <input required type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
-        <input required type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
-        <input required placeholder="Reason for visit" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
-      </div>
-      <button type="submit">Book Appointment</button>
-    </form>
+    <section className="booking-layout">
+      <form className="panel form-panel" onSubmit={registerPatient}>
+        <h2>Patient Registration</h2>
+        <div className="form-grid">
+          <TextField required placeholder="Full name" value={patientForm.name} onChange={(name) => setPatientForm({ ...patientForm, name })} />
+          <TextField required type="email" placeholder="Email" value={patientForm.email} onChange={(email) => setPatientForm({ ...patientForm, email })} />
+          <TextField required placeholder="Phone" value={patientForm.phone} onChange={(phone) => setPatientForm({ ...patientForm, phone })} />
+          <TextField type="number" min="0" placeholder="Age" value={patientForm.age} onChange={(age) => setPatientForm({ ...patientForm, age })} />
+          <select value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}>
+            <option value="">Gender</option>
+            <option value="Female">Female</option>
+            <option value="Male">Male</option>
+            <option value="Other">Other</option>
+          </select>
+          <TextField placeholder="Address" value={patientForm.address} onChange={(address) => setPatientForm({ ...patientForm, address })} />
+        </div>
+        <button type="submit"><UserPlus size={17} /> Register Patient</button>
+      </form>
+
+      <form className="panel form-panel" onSubmit={bookAppointment}>
+        <div className="section-head compact">
+          <div>
+            <h2>Appointment Booking</h2>
+            <p>The API rejects duplicate active bookings for the same doctor, date, and time.</p>
+          </div>
+        </div>
+        <Notice>{message}</Notice>
+        {(doctors.error || patients.error) && <Notice type="error">{doctors.error || patients.error}</Notice>}
+        <div className="form-grid">
+          <select required value={bookingForm.patient_id} onChange={(event) => setBookingForm({ ...bookingForm, patient_id: event.target.value })}>
+            <option value="">Select patient</option>
+            {(patients.data || []).map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
+          </select>
+          <select required value={bookingForm.doctor_id} onChange={(event) => setBookingForm({ ...bookingForm, doctor_id: event.target.value })}>
+            <option value="">Select doctor</option>
+            {(doctors.data || []).map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name} - {doctor.specialization}</option>)}
+          </select>
+          <input required type="date" value={bookingForm.appointment_date} onChange={(event) => setBookingForm({ ...bookingForm, appointment_date: event.target.value })} />
+          <input required type="time" value={bookingForm.start_time} onChange={(event) => setBookingForm({ ...bookingForm, start_time: event.target.value })} />
+          <input required type="time" value={bookingForm.end_time} onChange={(event) => setBookingForm({ ...bookingForm, end_time: event.target.value })} />
+          <TextField required placeholder="Reason for visit" value={bookingForm.reason} onChange={(reason) => setBookingForm({ ...bookingForm, reason })} />
+        </div>
+        <button type="submit"><CalendarClock size={17} /> Book Appointment</button>
+      </form>
+    </section>
   );
 }
 
 function AppointmentTable({ role, patientOnly = false, doctorMode = false }) {
   const [filters, setFilters] = useState({ search: "", status: "", date: "" });
   const [refresh, setRefresh] = useState(0);
+  const [message, setMessage] = useState("");
   const query = useMemo(() => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => value && params.set(key, value));
     return params.toString();
   }, [filters]);
   const { data, loading, error } = useLoad(() => api(`/api/appointments${query ? `?${query}` : ""}`, { role }), [role, query, refresh]);
-  const rows = patientOnly ? (data || []).filter((row) => row.patient_name) : data || [];
+  const rows = data || [];
+  const options = nextStatusOptions(role, doctorMode ? "doctor" : "appointment");
 
   async function setStatus(id, status) {
-    await api(`/api/appointments/${id}/status`, {
-      role,
-      method: "PUT",
-      body: JSON.stringify({ status })
-    });
-    setRefresh((value) => value + 1);
+    setMessage("");
+    try {
+      await api(`/api/appointments/${id}/status`, {
+        role,
+        method: "PUT",
+        body: JSON.stringify({ status })
+      });
+      setMessage(`Appointment marked ${status}.`);
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setMessage(error.message);
+    }
   }
 
   return (
@@ -273,21 +454,25 @@ function AppointmentTable({ role, patientOnly = false, doctorMode = false }) {
           <h2>{doctorMode ? "Doctor Dashboard" : patientOnly ? "Patient Dashboard" : "Appointments"}</h2>
           <p>Confirmations, status changes, search, filters, and visit tracking.</p>
         </div>
+        <button type="button" className="secondary-button" onClick={() => setRefresh((value) => value + 1)} title="Refresh appointments">
+          <RefreshCcw size={16} /> Refresh
+        </button>
       </div>
       <div className="filters">
         <label>
           <Search size={16} />
-          <input placeholder="Search doctor, patient, reason" value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} />
+          <input placeholder="Search doctor, patient, reason" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
         </label>
         <label>
           <Filter size={16} />
-          <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+          <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
             <option value="">All statuses</option>
             {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
         </label>
-        <input type="date" value={filters.date} onChange={(e) => setFilters({ ...filters, date: e.target.value })} />
+        <input type="date" value={filters.date} onChange={(event) => setFilters({ ...filters, date: event.target.value })} />
       </div>
+      <Notice>{message}</Notice>
       {loading && <Empty message="Loading appointments..." />}
       {error && <Notice type="error">{error}</Notice>}
       {!loading && !rows.length && <Empty message="No appointments match the current filters." />}
@@ -313,10 +498,10 @@ function AppointmentTable({ role, patientOnly = false, doctorMode = false }) {
                   <td>{row.patient_name}</td>
                   <td>{row.doctor_name}</td>
                   <td>{row.reason}</td>
-                  <td><span className={`status ${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span></td>
+                  <td><span className={`status ${String(row.status).toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span></td>
                   <td>
-                    <select value={row.status} onChange={(e) => setStatus(row.id, e.target.value)}>
-                      {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                    <select value={row.status} onChange={(event) => setStatus(row.id, event.target.value)}>
+                      {options.map((status) => <option key={status} value={status}>{status}</option>)}
                     </select>
                   </td>
                 </tr>
@@ -345,24 +530,26 @@ function HistoryView({ role }) {
           <p>Patient visit records, diagnosis, treatment, and prescriptions.</p>
         </div>
       </div>
-      <select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+      {patients.error && <Notice type="error">{patients.error}</Notice>}
+      <select value={patientId} onChange={(event) => setPatientId(event.target.value)}>
         <option value="">Select patient</option>
         {(patients.data || []).map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
       </select>
       {!patientId && <Empty message="Choose a patient to view medical history." />}
+      {history.loading && patientId && <Empty message="Loading patient history..." />}
       {history.error && <Notice type="error">{history.error}</Notice>}
       {history.data && (
         <div className="timeline">
-          {history.data.records.length ? history.data.records.map((record) => (
+          {(history.data.records || []).length ? history.data.records.map((record) => (
             <article key={record.id} className="visit-card">
               <div>
                 <strong>{record.visit_date}</strong>
-                <span>{record.doctor_name} · {record.specialization}</span>
+                <span>{record.doctor_name} &middot; {record.specialization}</span>
               </div>
               <h3>{record.diagnosis}</h3>
               <p>{record.symptoms || "No symptoms recorded."}</p>
               <p>{record.treatment || "No treatment notes recorded."}</p>
-              {record.prescriptions.length > 0 && <small>{record.prescriptions.map((p) => `${p.medicine} ${p.dosage}`).join(", ")}</small>}
+              {(record.prescriptions || []).length > 0 && <small>{record.prescriptions.map((p) => `${p.medicine} ${p.dosage}`).join(", ")}</small>}
             </article>
           )) : <Empty message="No medical records found for this patient." />}
         </div>
@@ -374,13 +561,19 @@ function HistoryView({ role }) {
 export default function App() {
   const [active, setActive] = useState("analytics");
   const [role, setRole] = useState("admin");
-  const ActiveIcon = tabs.find((tab) => tab.id === active)?.icon || ClipboardList;
+  const visibleTabs = useMemo(() => tabs.filter((tab) => tab.roles.includes(role)), [role]);
+  const current = visibleTabs.find((tab) => tab.id === active) || visibleTabs[0];
+  const ActiveIcon = current?.icon || ClipboardList;
+
+  useEffect(() => {
+    if (visibleTabs.length && !visibleTabs.some((tab) => tab.id === active)) setActive(visibleTabs[0].id);
+  }, [active, visibleTabs]);
 
   return (
     <div className="app-shell">
       <Toolbar role={role} setRole={setRole} />
       <nav className="tabs" aria-label="Primary">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button className={active === tab.id ? "active" : ""} key={tab.id} onClick={() => setActive(tab.id)}>
@@ -393,14 +586,14 @@ export default function App() {
       <main>
         <div className="page-title">
           <ActiveIcon size={24} />
-          <span>{tabs.find((tab) => tab.id === active)?.label}</span>
+          <span>{current?.label}</span>
         </div>
-        {active === "analytics" && <Analytics role={role} />}
-        {active === "doctors" && <Doctors role={role} />}
-        {active === "booking" && <Booking role={role} />}
-        {active === "patient" && <AppointmentTable role={role} patientOnly />}
-        {active === "doctor" && <AppointmentTable role={role} doctorMode />}
-        {active === "history" && <HistoryView role={role} />}
+        {current?.id === "analytics" && <Analytics role={role} />}
+        {current?.id === "doctors" && <Doctors role={role} />}
+        {current?.id === "booking" && <Booking role={role} />}
+        {current?.id === "patient" && <AppointmentTable role={role} patientOnly />}
+        {current?.id === "doctor" && <AppointmentTable role={role} doctorMode />}
+        {current?.id === "history" && <HistoryView role={role} />}
       </main>
     </div>
   );
