@@ -5,17 +5,22 @@ import {
   CheckCircle2,
   ClipboardList,
   Download,
+  FileText,
   Filter,
   HeartPulse,
   History,
   LayoutDashboard,
+  LogIn,
+  LogOut,
   Plus,
   RefreshCcw,
   Save,
   Search,
+  ShieldCheck,
   Stethoscope,
   UserPlus,
-  UserRound
+  UserRound,
+  Users
 } from "lucide-react";
 import { api, downloadReport } from "./api.js";
 
@@ -34,7 +39,10 @@ const emptyPatient = {
   phone: "",
   age: "",
   gender: "",
-  address: ""
+  blood_group: "",
+  address: "",
+  emergency_contact: "",
+  allergies: ""
 };
 
 const emptyBooking = {
@@ -53,6 +61,26 @@ const emptyAvailability = {
   end_time: ""
 };
 
+const emptyReschedule = {
+  appointment_date: "",
+  start_time: "",
+  end_time: ""
+};
+
+const emptyConsultation = {
+  appointment_id: "",
+  patient_id: "",
+  doctor_id: "",
+  visit_date: "",
+  diagnosis: "",
+  symptoms: "",
+  treatment: "",
+  medicine: "",
+  dosage: "",
+  instructions: "",
+  duration_days: ""
+};
+
 const tabs = [
   { id: "analytics", label: "Analytics", icon: LayoutDashboard, roles: ["admin", "receptionist", "doctor"] },
   { id: "doctors", label: "Doctors", icon: Stethoscope, roles: ["admin", "receptionist", "patient", "doctor"] },
@@ -63,8 +91,15 @@ const tabs = [
 ];
 
 const statusOptions = ["Pending", "Confirmed", "In Progress", "Completed", "Cancelled", "Rescheduled"];
-const consultationStatus = ["Pending", "In Progress", "Completed"];
+const consultationStatus = ["Pending", "Confirmed", "In Progress", "Completed"];
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const demoPassword = "demo123";
+const demoAccounts = [
+  { role: "admin", label: "Admin", email: "admin@caresync.test", name: "Hospital Admin" },
+  { role: "receptionist", label: "Reception", email: "reception@caresync.test", name: "Riya Reception" },
+  { role: "doctor", label: "Doctor", email: "neha.rao@caresync.test", name: "Dr. Neha Rao" },
+  { role: "patient", label: "Patient", email: "aarav@caresync.test", name: "Aarav Sharma" }
+];
 
 function useLoad(loader, deps) {
   const [state, setState] = useState({ loading: true, error: "", data: null });
@@ -86,6 +121,18 @@ function useLoad(loader, deps) {
 function requiredValues(values, labels) {
   const missing = Object.entries(labels).find(([key]) => !String(values[key] || "").trim());
   if (missing) throw new Error(`${missing[1]} is required.`);
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function readStoredSession() {
+  try {
+    return JSON.parse(localStorage.getItem("caresync-session") || "null");
+  } catch {
+    return null;
+  }
 }
 
 function nextStatusOptions(role, mode) {
@@ -117,22 +164,94 @@ function TextField({ value, onChange, ...props }) {
   return <input value={value} onChange={(event) => onChange(event.target.value)} {...props} />;
 }
 
-function Toolbar({ role, setRole }) {
+function LoginScreen({ onLogin }) {
+  const [account, setAccount] = useState(demoAccounts[0]);
+  const [password, setPassword] = useState(demoPassword);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage("");
+    try {
+      const session = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: account.email, password })
+      });
+      onLogin(session);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="login-shell">
+      <section className="login-hero">
+        <div className="brand-mark"><HeartPulse size={30} /></div>
+        <p className="eyebrow">CareSync Hub</p>
+        <h1>Hospital workflows, appointments, and care records in one dashboard.</h1>
+        <div className="login-metrics" aria-label="Demo coverage">
+          <span><ShieldCheck size={17} /> Role-based access</span>
+          <span><CalendarClock size={17} /> No double booking</span>
+          <span><FileText size={17} /> CSV reports</span>
+        </div>
+      </section>
+
+      <form className="login-card" onSubmit={submit}>
+        <div>
+          <p className="eyebrow">Demo Login</p>
+          <h2>Choose a workspace</h2>
+          <p>Use the seeded demo users to review admin, receptionist, doctor, and patient flows.</p>
+        </div>
+        <div className="account-grid">
+          {demoAccounts.map((item) => (
+            <button
+              type="button"
+              className={account.role === item.role ? "account-tile active" : "account-tile"}
+              key={item.role}
+              onClick={() => setAccount(item)}
+            >
+              <span>{item.label}</span>
+              <strong>{item.name}</strong>
+            </button>
+          ))}
+        </div>
+        <label>
+          <span>Email</span>
+          <input value={account.email} readOnly />
+        </label>
+        <label>
+          <span>Password</span>
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        </label>
+        <Notice type="error">{message}</Notice>
+        <button type="submit" disabled={loading}>
+          <LogIn size={17} /> {loading ? "Signing in..." : "Enter Dashboard"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+function Toolbar({ session, onLogout }) {
+  const role = session.user.role;
   return (
     <header className="topbar">
       <div>
         <p className="eyebrow">CareSync Hub</p>
         <h1>Hospital Appointment & Patient Management</h1>
       </div>
-      <label className="role-picker">
-        <span>Role</span>
-        <select value={role} onChange={(event) => setRole(event.target.value)}>
-          <option value="admin">Admin</option>
-          <option value="receptionist">Receptionist</option>
-          <option value="doctor">Doctor</option>
-          <option value="patient">Patient</option>
-        </select>
-      </label>
+      <div className="session-card">
+        <span>{role}</span>
+        <strong>{session.user.name}</strong>
+        <small>{session.user.email}</small>
+        <button type="button" className="secondary-button compact-button" onClick={onLogout} title="Sign out">
+          <LogOut size={16} /> Sign out
+        </button>
+      </div>
     </header>
   );
 }
@@ -208,7 +327,7 @@ function Analytics({ role }) {
   );
 }
 
-function Doctors({ role }) {
+function Doctors({ role, session }) {
   const [refresh, setRefresh] = useState(0);
   const { data, loading, error } = useLoad(() => api("/api/doctors", { role }), [role, refresh]);
   const [doctorForm, setDoctorForm] = useState(emptyDoctor);
@@ -248,7 +367,11 @@ function Doctors({ role }) {
   }
 
   const doctors = data || [];
-  const canManage = ["admin", "doctor"].includes(role);
+  const canCreateDoctor = role === "admin";
+  const canSetAvailability = ["admin", "doctor"].includes(role);
+  const availabilityDoctors = role === "doctor" && session?.user?.doctor_id
+    ? doctors.filter((doctor) => doctor.id === session.user.doctor_id)
+    : doctors;
 
   return (
     <section className="grid-two">
@@ -289,7 +412,7 @@ function Doctors({ role }) {
 
       <div className="stack">
         <Notice>{message}</Notice>
-        {canManage && (
+        {canCreateDoctor && (
           <form className="panel form-panel" onSubmit={createDoctor}>
             <h2>Create Doctor</h2>
             <TextField required placeholder="Full name" value={doctorForm.name} onChange={(name) => setDoctorForm({ ...doctorForm, name })} />
@@ -301,12 +424,12 @@ function Doctors({ role }) {
             <button type="submit"><Plus size={17} /> Create Profile</button>
           </form>
         )}
-        {canManage && (
+        {canSetAvailability && (
           <form className="panel form-panel" onSubmit={createAvailability}>
             <h2>Set Availability</h2>
             <select required value={slotForm.doctor_id} onChange={(event) => setSlotForm({ ...slotForm, doctor_id: event.target.value })}>
               <option value="">Select doctor</option>
-              {doctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
+              {availabilityDoctors.map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name}</option>)}
             </select>
             <select required value={slotForm.day_of_week} onChange={(event) => setSlotForm({ ...slotForm, day_of_week: event.target.value })}>
               {days.map((day) => <option key={day} value={day}>{day}</option>)}
@@ -318,19 +441,29 @@ function Doctors({ role }) {
             <button type="submit"><Save size={17} /> Save Slot</button>
           </form>
         )}
-        {!canManage && <Empty message="Doctor profiles and availability are managed by admins and doctors." />}
+        {!canSetAvailability && <Empty message="Doctor profiles and availability are managed by admins and doctors." />}
       </div>
     </section>
   );
 }
 
-function Booking({ role }) {
+function Booking({ role, session }) {
   const [refresh, setRefresh] = useState(0);
   const doctors = useLoad(() => api("/api/doctors", { role }), [role, refresh]);
-  const patients = useLoad(() => api("/api/users?role=patient", { role: role === "patient" ? "admin" : role }), [role, refresh]);
+  const patients = useLoad(
+    () => role === "patient" ? Promise.resolve([session.user]) : api("/api/users?role=patient", { role }),
+    [role, refresh, session.user.id]
+  );
   const [patientForm, setPatientForm] = useState(emptyPatient);
-  const [bookingForm, setBookingForm] = useState(emptyBooking);
+  const [bookingForm, setBookingForm] = useState(role === "patient" ? { ...emptyBooking, patient_id: session.user.id } : emptyBooking);
   const [message, setMessage] = useState("");
+  const canRegisterPatient = ["admin", "receptionist"].includes(role);
+
+  useEffect(() => {
+    if (role === "patient") {
+      setBookingForm((current) => ({ ...current, patient_id: session.user.id }));
+    }
+  }, [role, session.user.id]);
 
   async function registerPatient(event) {
     event.preventDefault();
@@ -338,7 +471,7 @@ function Booking({ role }) {
     try {
       requiredValues(patientForm, { name: "Patient name", email: "Email", phone: "Phone" });
       await api("/api/users", {
-        role: role === "patient" ? "admin" : role,
+        role,
         method: "POST",
         body: JSON.stringify({ ...patientForm, role: "patient" })
       });
@@ -372,23 +505,39 @@ function Booking({ role }) {
 
   return (
     <section className="booking-layout">
-      <form className="panel form-panel" onSubmit={registerPatient}>
-        <h2>Patient Registration</h2>
-        <div className="form-grid">
-          <TextField required placeholder="Full name" value={patientForm.name} onChange={(name) => setPatientForm({ ...patientForm, name })} />
-          <TextField required type="email" placeholder="Email" value={patientForm.email} onChange={(email) => setPatientForm({ ...patientForm, email })} />
-          <TextField required placeholder="Phone" value={patientForm.phone} onChange={(phone) => setPatientForm({ ...patientForm, phone })} />
-          <TextField type="number" min="0" placeholder="Age" value={patientForm.age} onChange={(age) => setPatientForm({ ...patientForm, age })} />
-          <select value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}>
-            <option value="">Gender</option>
-            <option value="Female">Female</option>
-            <option value="Male">Male</option>
-            <option value="Other">Other</option>
-          </select>
-          <TextField placeholder="Address" value={patientForm.address} onChange={(address) => setPatientForm({ ...patientForm, address })} />
-        </div>
-        <button type="submit"><UserPlus size={17} /> Register Patient</button>
-      </form>
+      {canRegisterPatient ? (
+        <form className="panel form-panel" onSubmit={registerPatient}>
+          <h2>Patient Registration</h2>
+          <div className="form-grid">
+            <TextField required placeholder="Full name" value={patientForm.name} onChange={(name) => setPatientForm({ ...patientForm, name })} />
+            <TextField required type="email" placeholder="Email" value={patientForm.email} onChange={(email) => setPatientForm({ ...patientForm, email })} />
+            <TextField required placeholder="Phone" value={patientForm.phone} onChange={(phone) => setPatientForm({ ...patientForm, phone })} />
+            <TextField type="number" min="0" placeholder="Age" value={patientForm.age} onChange={(age) => setPatientForm({ ...patientForm, age })} />
+            <select value={patientForm.gender} onChange={(event) => setPatientForm({ ...patientForm, gender: event.target.value })}>
+              <option value="">Gender</option>
+              <option value="Female">Female</option>
+              <option value="Male">Male</option>
+              <option value="Other">Other</option>
+            </select>
+            <TextField placeholder="Blood group" value={patientForm.blood_group} onChange={(blood_group) => setPatientForm({ ...patientForm, blood_group })} />
+            <TextField placeholder="Address" value={patientForm.address} onChange={(address) => setPatientForm({ ...patientForm, address })} />
+            <TextField placeholder="Emergency contact" value={patientForm.emergency_contact} onChange={(emergency_contact) => setPatientForm({ ...patientForm, emergency_contact })} />
+            <TextField placeholder="Known allergies" value={patientForm.allergies} onChange={(allergies) => setPatientForm({ ...patientForm, allergies })} />
+          </div>
+          <button type="submit"><UserPlus size={17} /> Register Patient</button>
+        </form>
+      ) : (
+        <article className="panel profile-panel">
+          <Users size={24} />
+          <h2>{session.user.name}</h2>
+          <p>{session.user.email}</p>
+          <div className="mini-grid">
+            <span>Age <strong>{session.user.age || "N/A"}</strong></span>
+            <span>Blood <strong>{session.user.blood_group || "N/A"}</strong></span>
+            <span>Allergies <strong>{session.user.allergies || "None recorded"}</strong></span>
+          </div>
+        </article>
+      )}
 
       <form className="panel form-panel" onSubmit={bookAppointment}>
         <div className="section-head compact">
@@ -400,7 +549,7 @@ function Booking({ role }) {
         <Notice>{message}</Notice>
         {(doctors.error || patients.error) && <Notice type="error">{doctors.error || patients.error}</Notice>}
         <div className="form-grid">
-          <select required value={bookingForm.patient_id} onChange={(event) => setBookingForm({ ...bookingForm, patient_id: event.target.value })}>
+          <select required value={bookingForm.patient_id} disabled={role === "patient"} onChange={(event) => setBookingForm({ ...bookingForm, patient_id: event.target.value })}>
             <option value="">Select patient</option>
             {(patients.data || []).map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
           </select>
@@ -419,18 +568,26 @@ function Booking({ role }) {
   );
 }
 
-function AppointmentTable({ role, patientOnly = false, doctorMode = false }) {
+function AppointmentTable({ role, session, patientOnly = false, doctorMode = false }) {
   const [filters, setFilters] = useState({ search: "", status: "", date: "" });
   const [refresh, setRefresh] = useState(0);
   const [message, setMessage] = useState("");
+  const [selectedReschedule, setSelectedReschedule] = useState(null);
+  const [rescheduleForm, setRescheduleForm] = useState(emptyReschedule);
+  const scopedPatientId = patientOnly && role === "patient" ? session.user.id : "";
+  const scopedDoctorId = doctorMode && role === "doctor" ? session.user.doctor_id : "";
   const query = useMemo(() => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => value && params.set(key, value));
+    if (scopedPatientId) params.set("patient_id", scopedPatientId);
+    if (scopedDoctorId) params.set("doctor_id", scopedDoctorId);
     return params.toString();
-  }, [filters]);
+  }, [filters, scopedPatientId, scopedDoctorId]);
   const { data, loading, error } = useLoad(() => api(`/api/appointments${query ? `?${query}` : ""}`, { role }), [role, query, refresh]);
   const rows = data || [];
   const options = nextStatusOptions(role, doctorMode ? "doctor" : "appointment");
+  const canUpdateStatus = role !== "patient";
+  const canReschedule = ["admin", "receptionist"].includes(role);
 
   async function setStatus(id, status) {
     setMessage("");
@@ -441,6 +598,35 @@ function AppointmentTable({ role, patientOnly = false, doctorMode = false }) {
         body: JSON.stringify({ status })
       });
       setMessage(`Appointment marked ${status}.`);
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  function startReschedule(row) {
+    setSelectedReschedule(row);
+    setRescheduleForm({
+      appointment_date: row.appointment_date,
+      start_time: row.start_time,
+      end_time: row.end_time
+    });
+  }
+
+  async function reschedule(event) {
+    event.preventDefault();
+    if (!selectedReschedule) return;
+    setMessage("");
+    try {
+      requiredValues(rescheduleForm, { appointment_date: "Date", start_time: "Start time", end_time: "End time" });
+      await api(`/api/appointments/${selectedReschedule.id}/reschedule`, {
+        role,
+        method: "PUT",
+        body: JSON.stringify(rescheduleForm)
+      });
+      setMessage("Appointment rescheduled.");
+      setSelectedReschedule(null);
+      setRescheduleForm(emptyReschedule);
       setRefresh((value) => value + 1);
     } catch (error) {
       setMessage(error.message);
@@ -500,9 +686,20 @@ function AppointmentTable({ role, patientOnly = false, doctorMode = false }) {
                   <td>{row.reason}</td>
                   <td><span className={`status ${String(row.status).toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span></td>
                   <td>
-                    <select value={row.status} onChange={(event) => setStatus(row.id, event.target.value)}>
-                      {options.map((status) => <option key={status} value={status}>{status}</option>)}
-                    </select>
+                    <div className="row-actions">
+                      {canUpdateStatus && (
+                        <select value={row.status} onChange={(event) => setStatus(row.id, event.target.value)}>
+                          {!options.includes(row.status) && <option value={row.status}>{row.status}</option>}
+                          {options.map((status) => <option key={status} value={status}>{status}</option>)}
+                        </select>
+                      )}
+                      {canReschedule && !["Completed", "Cancelled"].includes(row.status) && (
+                        <button type="button" className="secondary-button compact-button" onClick={() => startReschedule(row)}>
+                          <RefreshCcw size={15} /> Reschedule
+                        </button>
+                      )}
+                      {!canUpdateStatus && <span className="muted">View only</span>}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -510,17 +707,143 @@ function AppointmentTable({ role, patientOnly = false, doctorMode = false }) {
           </table>
         </div>
       )}
+      {selectedReschedule && (
+        <form className="reschedule-panel" onSubmit={reschedule}>
+          <div>
+            <strong>Reschedule #{selectedReschedule.id}</strong>
+            <span>{selectedReschedule.patient_name} with {selectedReschedule.doctor_name}</span>
+          </div>
+          <input required type="date" value={rescheduleForm.appointment_date} onChange={(event) => setRescheduleForm({ ...rescheduleForm, appointment_date: event.target.value })} />
+          <input required type="time" value={rescheduleForm.start_time} onChange={(event) => setRescheduleForm({ ...rescheduleForm, start_time: event.target.value })} />
+          <input required type="time" value={rescheduleForm.end_time} onChange={(event) => setRescheduleForm({ ...rescheduleForm, end_time: event.target.value })} />
+          <button type="submit"><Save size={16} /> Save</button>
+          <button type="button" className="secondary-button" onClick={() => setSelectedReschedule(null)}>Cancel</button>
+        </form>
+      )}
     </section>
   );
 }
 
-function HistoryView({ role }) {
-  const patients = useLoad(() => api("/api/users?role=patient", { role: role === "patient" ? "admin" : role }), [role]);
-  const [patientId, setPatientId] = useState("");
+function ConsultationForm({ role, session }) {
+  const [refresh, setRefresh] = useState(0);
+  const canCreate = ["admin", "doctor"].includes(role);
+  const scopedDoctorId = role === "doctor" ? session.user.doctor_id : "";
+  const doctors = useLoad(() => api("/api/doctors", { role }), [role, refresh]);
+  const patients = useLoad(() => api("/api/users?role=patient", { role }), [role, refresh]);
+  const appointments = useLoad(() => {
+    const params = new URLSearchParams();
+    if (scopedDoctorId) params.set("doctor_id", scopedDoctorId);
+    return api(`/api/appointments${params.toString() ? `?${params}` : ""}`, { role });
+  }, [role, scopedDoctorId, refresh]);
+  const [form, setForm] = useState({
+    ...emptyConsultation,
+    visit_date: today(),
+    doctor_id: scopedDoctorId || ""
+  });
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (scopedDoctorId) setForm((current) => ({ ...current, doctor_id: scopedDoctorId }));
+  }, [scopedDoctorId]);
+
+  function useAppointment(appointmentId) {
+    const appointment = (appointments.data || []).find((item) => String(item.id) === String(appointmentId));
+    setForm((current) => ({
+      ...current,
+      appointment_id: appointmentId,
+      patient_id: appointment?.patient_id || current.patient_id,
+      doctor_id: appointment?.doctor_id || current.doctor_id
+    }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      requiredValues(form, {
+        patient_id: "Patient",
+        doctor_id: "Doctor",
+        visit_date: "Visit date",
+        diagnosis: "Diagnosis"
+      });
+      const prescriptions = form.medicine && form.dosage ? [{
+        medicine: form.medicine,
+        dosage: form.dosage,
+        instructions: form.instructions,
+        duration_days: form.duration_days ? Number(form.duration_days) : null
+      }] : [];
+      await api("/api/medical-records", {
+        role,
+        method: "POST",
+        body: JSON.stringify({ ...form, prescriptions })
+      });
+      setMessage("Consultation record saved and linked appointment marked completed.");
+      setForm({ ...emptyConsultation, visit_date: today(), doctor_id: scopedDoctorId || "" });
+      setRefresh((value) => value + 1);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
+  if (!canCreate) {
+    return <Empty message="Consultation records are created by doctors and admins." />;
+  }
+
+  return (
+    <form className="panel form-panel wide-form" onSubmit={submit}>
+      <div className="section-head compact">
+        <div>
+          <h2>Consultation Record</h2>
+          <p>Save diagnosis, treatment, and prescription details into the patient medical history.</p>
+        </div>
+      </div>
+      <Notice>{message}</Notice>
+      {(doctors.error || patients.error || appointments.error) && <Notice type="error">{doctors.error || patients.error || appointments.error}</Notice>}
+      <div className="form-grid">
+        <select value={form.appointment_id} onChange={(event) => useAppointment(event.target.value)}>
+          <option value="">Link appointment</option>
+          {(appointments.data || []).map((item) => (
+            <option key={item.id} value={item.id}>
+              #{item.id} {item.appointment_date} {item.start_time} - {item.patient_name}
+            </option>
+          ))}
+        </select>
+        <input required type="date" value={form.visit_date} onChange={(event) => setForm({ ...form, visit_date: event.target.value })} />
+        <select required value={form.patient_id} onChange={(event) => setForm({ ...form, patient_id: event.target.value })}>
+          <option value="">Select patient</option>
+          {(patients.data || []).map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
+        </select>
+        <select required value={form.doctor_id} disabled={role === "doctor"} onChange={(event) => setForm({ ...form, doctor_id: event.target.value })}>
+          <option value="">Select doctor</option>
+          {(doctors.data || []).map((doctor) => <option key={doctor.id} value={doctor.id}>{doctor.name} - {doctor.specialization}</option>)}
+        </select>
+        <TextField required placeholder="Diagnosis" value={form.diagnosis} onChange={(diagnosis) => setForm({ ...form, diagnosis })} />
+        <TextField placeholder="Symptoms" value={form.symptoms} onChange={(symptoms) => setForm({ ...form, symptoms })} />
+        <TextField placeholder="Treatment plan" value={form.treatment} onChange={(treatment) => setForm({ ...form, treatment })} />
+        <TextField placeholder="Medicine" value={form.medicine} onChange={(medicine) => setForm({ ...form, medicine })} />
+        <TextField placeholder="Dosage" value={form.dosage} onChange={(dosage) => setForm({ ...form, dosage })} />
+        <TextField placeholder="Instructions" value={form.instructions} onChange={(instructions) => setForm({ ...form, instructions })} />
+        <TextField type="number" min="1" placeholder="Duration days" value={form.duration_days} onChange={(duration_days) => setForm({ ...form, duration_days })} />
+      </div>
+      <button type="submit"><Save size={17} /> Save Consultation</button>
+    </form>
+  );
+}
+
+function HistoryView({ role, session }) {
+  const patients = useLoad(
+    () => role === "patient" ? Promise.resolve([session.user]) : api("/api/users?role=patient", { role }),
+    [role, session.user.id]
+  );
+  const [patientId, setPatientId] = useState(role === "patient" ? session.user.id : "");
   const history = useLoad(
     () => patientId ? api(`/api/patients/${patientId}/history`, { role }) : Promise.resolve(null),
     [role, patientId]
   );
+
+  useEffect(() => {
+    if (role === "patient") setPatientId(session.user.id);
+  }, [role, session.user.id]);
 
   return (
     <section className="panel">
@@ -531,7 +854,7 @@ function HistoryView({ role }) {
         </div>
       </div>
       {patients.error && <Notice type="error">{patients.error}</Notice>}
-      <select value={patientId} onChange={(event) => setPatientId(event.target.value)}>
+      <select value={patientId} disabled={role === "patient"} onChange={(event) => setPatientId(event.target.value)}>
         <option value="">Select patient</option>
         {(patients.data || []).map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
       </select>
@@ -540,6 +863,12 @@ function HistoryView({ role }) {
       {history.error && <Notice type="error">{history.error}</Notice>}
       {history.data && (
         <div className="timeline">
+          <div className="patient-summary">
+            <span>Age <strong>{history.data.patient.age || "N/A"}</strong></span>
+            <span>Blood <strong>{history.data.patient.blood_group || "N/A"}</strong></span>
+            <span>Emergency <strong>{history.data.patient.emergency_contact || "N/A"}</strong></span>
+            <span>Allergies <strong>{history.data.patient.allergies || "None recorded"}</strong></span>
+          </div>
           {(history.data.records || []).length ? history.data.records.map((record) => (
             <article key={record.id} className="visit-card">
               <div>
@@ -560,7 +889,8 @@ function HistoryView({ role }) {
 
 export default function App() {
   const [active, setActive] = useState("analytics");
-  const [role, setRole] = useState("admin");
+  const [session, setSession] = useState(readStoredSession);
+  const role = session?.user?.role || "patient";
   const visibleTabs = useMemo(() => tabs.filter((tab) => tab.roles.includes(role)), [role]);
   const current = visibleTabs.find((tab) => tab.id === active) || visibleTabs[0];
   const ActiveIcon = current?.icon || ClipboardList;
@@ -569,9 +899,23 @@ export default function App() {
     if (visibleTabs.length && !visibleTabs.some((tab) => tab.id === active)) setActive(visibleTabs[0].id);
   }, [active, visibleTabs]);
 
+  function login(nextSession) {
+    localStorage.setItem("caresync-session", JSON.stringify(nextSession));
+    setSession(nextSession);
+    setActive("analytics");
+  }
+
+  function logout() {
+    localStorage.removeItem("caresync-session");
+    setSession(null);
+    setActive("analytics");
+  }
+
+  if (!session) return <LoginScreen onLogin={login} />;
+
   return (
     <div className="app-shell">
-      <Toolbar role={role} setRole={setRole} />
+      <Toolbar session={session} onLogout={logout} />
       <nav className="tabs" aria-label="Primary">
         {visibleTabs.map((tab) => {
           const Icon = tab.icon;
@@ -589,11 +933,16 @@ export default function App() {
           <span>{current?.label}</span>
         </div>
         {current?.id === "analytics" && <Analytics role={role} />}
-        {current?.id === "doctors" && <Doctors role={role} />}
-        {current?.id === "booking" && <Booking role={role} />}
-        {current?.id === "patient" && <AppointmentTable role={role} patientOnly />}
-        {current?.id === "doctor" && <AppointmentTable role={role} doctorMode />}
-        {current?.id === "history" && <HistoryView role={role} />}
+        {current?.id === "doctors" && <Doctors role={role} session={session} />}
+        {current?.id === "booking" && <Booking role={role} session={session} />}
+        {current?.id === "patient" && <AppointmentTable role={role} session={session} patientOnly />}
+        {current?.id === "doctor" && (
+          <div className="stack">
+            <AppointmentTable role={role} session={session} doctorMode />
+            <ConsultationForm role={role} session={session} />
+          </div>
+        )}
+        {current?.id === "history" && <HistoryView role={role} session={session} />}
       </main>
     </div>
   );

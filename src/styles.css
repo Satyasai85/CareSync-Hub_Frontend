@@ -40,6 +40,15 @@ button:hover,
   background: #115e59;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+button svg {
+  flex: 0 0 auto;
+}
+
 .secondary-button {
   background: #eef2f7;
   color: #405160;
@@ -60,6 +69,34 @@ button:hover,
   justify-content: space-between;
   gap: 24px;
   padding: 24px clamp(16px, 4vw, 48px);
+}
+
+.session-card {
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 1px solid #dfe6ee;
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  min-width: min(280px, 100%);
+  padding: 12px;
+}
+
+.session-card span {
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.session-card small {
+  color: #607080;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 0 11px;
+  width: max-content;
 }
 
 .eyebrow {
@@ -120,6 +157,121 @@ input {
   min-height: 42px;
   padding: 0 12px;
   width: 100%;
+}
+
+input:disabled,
+select:disabled,
+input[readonly] {
+  background: #f1f5f9;
+  color: #607080;
+}
+
+.login-shell {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.13), rgba(14, 165, 233, 0.08)),
+    #f5f7fa;
+  display: grid;
+  gap: clamp(18px, 4vw, 44px);
+  grid-template-columns: minmax(0, 1.05fr) minmax(340px, 460px);
+  min-height: 100vh;
+  padding: clamp(18px, 5vw, 64px);
+}
+
+.login-hero {
+  display: grid;
+  gap: 18px;
+  max-width: 740px;
+}
+
+.brand-mark {
+  align-items: center;
+  background: #0f766e;
+  border-radius: 8px;
+  color: #fff;
+  display: inline-flex;
+  height: 58px;
+  justify-content: center;
+  width: 58px;
+}
+
+.login-hero h1 {
+  font-size: clamp(2.2rem, 5vw, 4.8rem);
+  line-height: 1.02;
+  max-width: 820px;
+}
+
+.login-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.login-metrics span {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid #dfe6ee;
+  border-radius: 8px;
+  color: #405160;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.login-card {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #dfe6ee;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(23, 32, 42, 0.14);
+  display: grid;
+  gap: 16px;
+  padding: clamp(18px, 4vw, 28px);
+}
+
+.login-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.login-card label span {
+  color: #405160;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.account-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-tile {
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 1px solid #dfe6ee;
+  color: #17202a;
+  display: grid;
+  gap: 4px;
+  justify-content: stretch;
+  min-height: 78px;
+  padding: 12px;
+  text-align: left;
+}
+
+.account-tile:hover,
+.account-tile.active {
+  background: #e6f5f3;
+  border-color: #76c7bd;
+  color: #0f766e;
+}
+
+.account-tile span {
+  color: #607080;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .tabs {
@@ -397,7 +549,74 @@ th {
   color: #607080;
 }
 
+.row-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.row-actions select {
+  min-width: 150px;
+}
+
+.reschedule-panel {
+  align-items: end;
+  background: #f8fafc;
+  border: 1px solid #dfe6ee;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1.2fr) repeat(3, minmax(130px, 0.7fr)) auto auto;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.reschedule-panel div,
+.profile-panel,
+.patient-summary,
+.mini-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.reschedule-panel span,
+.muted {
+  color: #607080;
+  font-size: 0.86rem;
+}
+
+.profile-panel svg {
+  color: #0f766e;
+}
+
+.mini-grid,
+.patient-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mini-grid span,
+.patient-summary span {
+  background: #f8fafc;
+  border: 1px solid #e8edf3;
+  border-radius: 8px;
+  color: #607080;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.mini-grid strong,
+.patient-summary strong {
+  color: #17202a;
+}
+
 @media (max-width: 880px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
   .topbar,
   .section-head,
   .doctor-card-head {
@@ -408,7 +627,14 @@ th {
   .grid-two,
   .booking-layout,
   .filters,
-  .form-grid {
+  .form-grid,
+  .reschedule-panel,
+  .mini-grid,
+  .patient-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .account-grid {
     grid-template-columns: 1fr;
   }
 }
