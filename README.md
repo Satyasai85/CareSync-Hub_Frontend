@@ -65,4 +65,3 @@ Password for every account: `demo123`
 
 - GitHub repository link: `https://github.com/Satyasai85/CareSync-Hub_Frontend`
 - Deployed/published application link: `https://care-sync-hub-frontend.vercel.app`
-- Video recording link: add after recording.
