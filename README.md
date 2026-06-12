@@ -7,7 +7,6 @@ ReactJS frontend for the Hospital Appointment & Patient Management System.
 - Frontend app: `https://care-sync-hub-frontend.vercel.app`
 - Backend API: `https://caresync-hub-backend.onrender.com`
 - GitHub repository: `https://github.com/Satyasai85/CareSync-Hub_Frontend`
-- Video recording: add the final 5 to 8 minute recording link before submission.
 
 ## Setup
 
